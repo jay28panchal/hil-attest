@@ -17,14 +17,41 @@ guaranteed or automatic route to any OpenAI program benefit.
 - Workspace: /home/jay/jay-work/personal/hil-attest
 - Branch: main
 - Repository: initialized locally
-- Remote: none
-- Commit state: initial/root commit authorized on 2026-10-26; use
-  git rev-parse HEAD for its exact identifier
-- Publication state: not published
+- Remote: origin at https://github.com/jay28panchal/hil-attest.git
+- Commit state: initial/root commit e3f599f is pushed; the publication and CI
+  record is included in the authorized follow-up documentation commit
+- Publication state: public at https://github.com/jay28panchal/hil-attest
 - Program application: not submitted
 
-Do not create additional commits, create a remote, push, publish a package, or
-submit an application without explicit user instruction.
+Do not create additional commits or pushes, publish a package, or submit an
+application without explicit user instruction.
+
+## 2026-10-26 — Public repository and first CI run
+
+The user authorized proceeding after the initial commit. Created the public
+GitHub repository, configured origin, and pushed main at e3f599f.
+The user subsequently authorized committing and pushing this publication and
+CI handoff record.
+
+Repository metadata:
+
+- Description: Vendor-neutral in-toto attestations for embedded
+  hardware-in-the-loop test evidence
+- License detected by GitHub: MIT
+- Topics: attestation, embedded, firmware, hardware-in-the-loop, in-toto,
+  pytest, supply-chain-security, zephyr
+- Issues: enabled
+
+GitHub Actions run 40294115019 passed all six jobs:
+
+- Ubuntu latest: Python 3.10 and 3.13
+- macOS latest: Python 3.10 and 3.13
+- Windows latest: Python 3.10 and 3.13
+
+Every job passed installation, the 11-test suite, and the example create/verify
+round trip. GitHub emitted non-failing warnings that actions/checkout@v4 and
+actions/setup-python@v5 target deprecated Node.js 20 and are being forced onto
+Node.js 24. Upgrade those actions when stable successor releases are selected.
 
 ## 2026-10-26 — Research, project selection, and MVP
 
@@ -118,8 +145,8 @@ All verification below used fixtures or host-side tests, not physical hardware.
 5. Run a clearly documented physical nRF52840 test pilot, then an ESP32 pilot.
 6. Add adapters only after real workflows demonstrate what metadata is needed.
 7. Rerun the wheel build and all tests again immediately before any commit.
-8. Publish only after explicit user authorization; the initial local commit
-   does not authorize creating a remote or pushing.
+8. Record and verify each future material change before any explicitly
+   authorized commit or push.
 
 ## Handoff
 
