@@ -8,6 +8,7 @@ from hil_attest.attestation import (
     PREDICATE_TYPE,
     STATEMENT_TYPE,
     create_statement,
+    evaluate_policy,
     load_dut_metadata,
     verify_statement,
 )
@@ -100,6 +101,74 @@ class AttestationTests(unittest.TestCase):
         issues = verify_statement(statement, evidence=[self.log])
         self.assertIn(f"configuration digest mismatch: {self.log}", issues)
 
+    def test_accepts_omitted_optional_test_lists(self) -> None:
+        statement = self._statement()
+        predicate = statement["predicate"]
+        predicate["result"] = "FAILED"
+        del predicate["passedTests"]
+        del predicate["warnedTests"]
+        del predicate["failedTests"]
+
+        self.assertEqual(verify_statement(statement), [])
+
+    def test_reports_malformed_digest_objects(self) -> None:
+        statement = self._statement()
+        statement["subject"][0]["digest"] = None
+        statement["subject"].append(
+            {"name": "firmware.hex", "digest": {"sha256": "0" * 64}}
+        )
+        statement["predicate"]["configuration"][0]["digest"] = "invalid"
+
+        issues = verify_statement(statement)
+
+        self.assertIn("subject digest must be an object", issues)
+        self.assertIn("duplicate subject name: firmware.hex", issues)
+        self.assertIn(
+            "configuration digest must be an object for 'dut/dut.json'", issues
+        )
+
+    def test_rejects_inconsistent_outcome_lists(self) -> None:
+        statement = self._statement()
+        statement["predicate"]["result"] = "PASSED"
+        statement["predicate"]["failedTests"] = ["boot::crashes"]
+
+        self.assertIn(
+            "result must be FAILED when failedTests is non-empty",
+            verify_statement(statement),
+        )
+
+    def test_policy_accepts_expected_result_dut_and_test(self) -> None:
+        self.assertEqual(
+            evaluate_policy(
+                self._statement(),
+                required_result="WARNED",
+                required_board="nrf52840dk_nrf52840",
+                required_target="nRF52840",
+                required_passed_tests=["boot::banner"],
+            ),
+            [],
+        )
+
+    def test_policy_reports_unsatisfied_requirements(self) -> None:
+        issues = evaluate_policy(
+            self._statement(),
+            required_result="PASSED",
+            required_board="esp32_devkitc",
+            required_target="ESP32",
+            required_passed_tests=["wifi::connects"],
+        )
+
+        self.assertIn("policy requires result 'PASSED'; found 'WARNED'", issues)
+        self.assertIn("policy requires a passing test: wifi::connects", issues)
+        self.assertIn(
+            "policy requires DUT board 'esp32_devkitc'; "
+            "found 'nrf52840dk_nrf52840'",
+            issues,
+        )
+        self.assertIn(
+            "policy requires DUT target 'ESP32'; found 'nRF52840'", issues
+        )
+
     def test_output_is_deterministic(self) -> None:
         first = self._statement()
         second = self._statement()
@@ -120,6 +189,21 @@ class AttestationTests(unittest.TestCase):
         )
 
         with self.assertRaisesRegex(ValueError, "sensitive identifiers"):
+            load_dut_metadata(self.dut)
+
+    def test_rejects_camel_case_device_identifier(self) -> None:
+        self.dut.write_text(
+            json.dumps(
+                {
+                    "board": "custom",
+                    "target": "nRF52840",
+                    "serialNumber": "123456789",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(ValueError, "serialNumber"):
             load_dut_metadata(self.dut)
 
     def test_requires_board_and_target(self) -> None:

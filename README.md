@@ -28,10 +28,12 @@ signed by a trusted system. Signing and CI publication are roadmap items.
 ## Requirements
 
 - Python 3.10 or newer
-- Windows 10+, macOS 12+, or a current Linux distribution
+- Ubuntu 24.04 LTS+, Windows 11 25H2+, or macOS 15+
 - JUnit XML from any test harness
 
-The core has no runtime dependencies.
+The core has no runtime dependencies. See
+[docs/platform-support.md](docs/platform-support.md) for hardware, lifecycle,
+and CI details.
 
 ## Install for development
 
@@ -79,13 +81,32 @@ hil-attest verify build/hil-attestation.json \
   --artifact build/zephyr/zephyr.elf \
   --junit build/test-results.xml \
   --dut dut.json \
-  --evidence build/uart.log
+  --evidence build/uart.log \
+  --require-result PASSED \
+  --require-board nrf52840dk_nrf52840 \
+  --require-target nRF52840 \
+  --require-passed-test boot::banner
 hil-attest inspect build/hil-attestation.json
 ~~~
 
-Verification checks structure, result consistency, embedded metadata integrity,
-and supplied firmware, JUnit, DUT, and evidence files. An unsigned statement
-provides integrity linkage, not signer identity.
+Verification checks the in-toto/Test Result field profile, result consistency,
+embedded metadata integrity, and supplied firmware, JUnit, DUT, and evidence
+files. Optional per-test lists may be omitted as allowed by Test Result v0.1.
+Policy flags can gate on the overall result, embedded board/target, and named
+passing tests. An unsigned statement provides integrity linkage, not signer
+identity. See [docs/conformance.md](docs/conformance.md) for the exact
+compatibility scope.
+
+To publish a signed custom predicate with GitHub artifact attestations, export
+the predicate portion without duplicating the statement wrapper:
+
+~~~console
+hil-attest export-predicate build/hil-attestation.json \
+  --output build/hil-predicate.json
+~~~
+
+See [docs/github-attestations.md](docs/github-attestations.md) for a complete
+workflow fragment and verification commands.
 
 ## Output model
 

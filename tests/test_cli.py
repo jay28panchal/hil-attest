@@ -53,11 +53,50 @@ class CliTests(unittest.TestCase):
                         str(junit),
                         "--dut",
                         str(dut),
+                        "--require-result",
+                        "PASSED",
+                        "--require-board",
+                        "qemu-test",
+                        "--require-target",
+                        "cortex-m",
+                        "--require-passed-test",
+                        "boots",
                     ]
                 ),
                 0,
             )
+            predicate_output = root / "predicate.json"
+            self.assertEqual(
+                main(
+                    [
+                        "export-predicate",
+                        str(output),
+                        "--output",
+                        str(predicate_output),
+                    ]
+                ),
+                0,
+            )
+            statement = json.loads(output.read_text(encoding="utf-8"))
+            predicate = json.loads(predicate_output.read_text(encoding="utf-8"))
+            self.assertEqual(predicate, statement["predicate"])
+            self.assertNotIn("_type", predicate)
             self.assertEqual(main(["inspect", str(output)]), 0)
+
+    def test_inspect_handles_malformed_untrusted_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            attestation = Path(directory) / "malformed.json"
+            attestation.write_text(
+                json.dumps(
+                    {
+                        "subject": [{"name": "firmware.bin", "digest": None}],
+                        "predicate": {"passedTests": "not-a-list"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(main(["inspect", str(attestation)]), 0)
 
 
 if __name__ == "__main__":

@@ -16,15 +16,15 @@ JSON_MEDIA_TYPE = "application/json"
 
 _SENSITIVE_DUT_KEYS = {
     "address",
-    "device_id",
+    "deviceid",
     "email",
     "imei",
     "ip",
-    "ip_address",
+    "ipaddress",
     "mac",
-    "mac_address",
+    "macaddress",
     "serial",
-    "serial_number",
+    "serialnumber",
 }
 
 
@@ -90,7 +90,10 @@ def load_dut_metadata(path: Path, allow_sensitive: bool = False) -> dict[str, An
         sensitive: list[str] = []
         for key_path in _walk_keys(value):
             leaf = key_path.rsplit(".", 1)[-1].split("[", 1)[0].lower()
-            if leaf in _SENSITIVE_DUT_KEYS and not leaf.endswith("_hash"):
+            normalized = "".join(
+                character for character in leaf if character.isalnum()
+            )
+            if normalized in _SENSITIVE_DUT_KEYS and not normalized.endswith("hash"):
                 sensitive.append(key_path)
         if sensitive:
             raise ValueError(
@@ -201,19 +204,27 @@ def verify_statement(
         subjects = []
 
     subject_by_name: dict[str, str] = {}
+    subject_names: set[str] = set()
     for subject in subjects:
         if not isinstance(subject, dict):
             issues.append("subject entries must be objects")
             continue
         name = subject.get("name")
-        digest = subject.get("digest", {}).get("sha256")
+        digest_set = subject.get("digest")
+        if not isinstance(digest_set, dict):
+            issues.append("subject digest must be an object")
+            digest = None
+        else:
+            digest = digest_set.get("sha256")
         if not isinstance(name, str) or not name:
             issues.append("subject name must be a non-empty string")
-        elif name in subject_by_name:
-            issues.append(f"duplicate subject name: {name}")
+        else:
+            if name in subject_names:
+                issues.append(f"duplicate subject name: {name}")
+            subject_names.add(name)
         if not _valid_sha256(digest):
             issues.append(f"invalid SHA-256 for subject: {name!r}")
-        elif isinstance(name, str):
+        elif isinstance(name, str) and name not in subject_by_name:
             subject_by_name[name] = digest
 
     predicate = statement.get("predicate")
@@ -223,45 +234,50 @@ def verify_statement(
 
     result_lists: dict[str, list[str]] = {}
     for field in ("passedTests", "warnedTests", "failedTests"):
-        value = predicate.get(field)
-        if not isinstance(value, list) or not all(
-            isinstance(item, str) for item in value
+        value = predicate.get(field, [])
+        if field in predicate and (
+            not isinstance(value, list)
+            or not all(isinstance(item, str) for item in value)
         ):
             issues.append(f"{field} must be a list of strings")
             value = []
         result_lists[field] = value
 
-    expected_result = (
-        "FAILED"
-        if result_lists["failedTests"]
-        else "WARNED"
-        if result_lists["warnedTests"]
-        else "PASSED"
-    )
-    if predicate.get("result") != expected_result:
-        issues.append(
-            f"result is {predicate.get('result')!r}; expected {expected_result!r}"
-        )
+    result = predicate.get("result")
+    if result not in {"PASSED", "WARNED", "FAILED"}:
+        issues.append("result must be PASSED, WARNED, or FAILED")
+    elif result_lists["failedTests"] and result != "FAILED":
+        issues.append("result must be FAILED when failedTests is non-empty")
+    elif result_lists["warnedTests"] and result == "PASSED":
+        issues.append("result cannot be PASSED when warnedTests is non-empty")
 
     configuration = predicate.get("configuration")
-    if not isinstance(configuration, list) or not configuration:
-        issues.append("configuration must be a non-empty list")
+    if not isinstance(configuration, list):
+        issues.append("configuration must be a list")
         configuration = []
 
     configuration_by_name: dict[str, str] = {}
+    configuration_names: set[str] = set()
     for descriptor in configuration:
         if not isinstance(descriptor, dict):
             issues.append("configuration entries must be objects")
             continue
         name = descriptor.get("name")
-        digest = descriptor.get("digest", {}).get("sha256")
+        digest_set = descriptor.get("digest")
+        if not isinstance(digest_set, dict):
+            issues.append(f"configuration digest must be an object for {name!r}")
+            digest = None
+        else:
+            digest = digest_set.get("sha256")
         if not isinstance(name, str) or not name:
             issues.append("configuration name must be a non-empty string")
-        elif name in configuration_by_name:
-            issues.append(f"duplicate configuration name: {name}")
+        else:
+            if name in configuration_names:
+                issues.append(f"duplicate configuration name: {name}")
+            configuration_names.add(name)
         if not _valid_sha256(digest):
             issues.append(f"invalid configuration SHA-256 for {name!r}")
-        elif isinstance(name, str):
+        elif isinstance(name, str) and name not in configuration_by_name:
             configuration_by_name[name] = digest
         content = descriptor.get("content")
         if content is not None:
@@ -315,6 +331,75 @@ def verify_statement(
                 elif sha256_bytes(canonical_json_bytes(dut_value)) != expected:
                     issues.append(f"DUT metadata digest mismatch: {dut}")
 
+    return issues
+
+
+def evaluate_policy(
+    statement: dict[str, Any],
+    *,
+    required_result: str | None = None,
+    required_board: str | None = None,
+    required_target: str | None = None,
+    required_passed_tests: list[str] | None = None,
+) -> list[str]:
+    issues: list[str] = []
+    predicate = statement.get("predicate")
+    if not isinstance(predicate, dict):
+        return ["cannot evaluate policy without a predicate object"]
+
+    if required_result is not None and predicate.get("result") != required_result:
+        issues.append(
+            f"policy requires result {required_result!r}; "
+            f"found {predicate.get('result')!r}"
+        )
+
+    passed_tests = predicate.get("passedTests", [])
+    passed_names = (
+        set(passed_tests)
+        if isinstance(passed_tests, list)
+        and all(isinstance(item, str) for item in passed_tests)
+        else set()
+    )
+    for test_name in required_passed_tests or []:
+        if test_name not in passed_names:
+            issues.append(f"policy requires a passing test: {test_name}")
+
+    if required_board is None and required_target is None:
+        return issues
+
+    configuration = predicate.get("configuration")
+    descriptors = configuration if isinstance(configuration, list) else []
+    dut_descriptors = [
+        descriptor
+        for descriptor in descriptors
+        if isinstance(descriptor, dict)
+        and isinstance(descriptor.get("name"), str)
+        and descriptor["name"].startswith("dut/")
+    ]
+    if len(dut_descriptors) != 1:
+        issues.append("policy requires exactly one embedded DUT descriptor")
+        return issues
+
+    content = dut_descriptors[0].get("content")
+    try:
+        decoded = base64.b64decode(content, validate=True)
+        metadata = json.loads(decoded)
+    except (ValueError, TypeError, json.JSONDecodeError):
+        issues.append("policy cannot decode embedded DUT metadata")
+        return issues
+    if not isinstance(metadata, dict):
+        issues.append("policy requires DUT metadata to be an object")
+        return issues
+
+    for field, required in (
+        ("board", required_board),
+        ("target", required_target),
+    ):
+        if required is not None and metadata.get(field) != required:
+            issues.append(
+                f"policy requires DUT {field} {required!r}; "
+                f"found {metadata.get(field)!r}"
+            )
     return issues
 
 

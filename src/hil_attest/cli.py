@@ -8,6 +8,7 @@ import sys
 from . import __version__
 from .attestation import (
     create_statement,
+    evaluate_policy,
     read_statement,
     verify_statement,
     write_statement,
@@ -67,6 +68,27 @@ def _parser() -> argparse.ArgumentParser:
         type=_path,
         help="recompute an evidence digest; repeat as needed",
     )
+    verify.add_argument(
+        "--require-result",
+        choices=("PASSED", "WARNED", "FAILED"),
+        help="require this overall test result",
+    )
+    verify.add_argument("--require-board", help="require this embedded DUT board")
+    verify.add_argument("--require-target", help="require this embedded DUT target")
+    verify.add_argument(
+        "--require-passed-test",
+        action="append",
+        default=[],
+        help="require a named test to appear in passedTests; repeat as needed",
+    )
+
+    export = commands.add_parser(
+        "export-predicate",
+        help="export the predicate for a signing or publication tool",
+    )
+    export.add_argument("attestation", type=_path)
+    export.add_argument("--output", required=True, type=_path)
+    export.add_argument("--force", action="store_true")
 
     inspect = commands.add_parser("inspect", help="print a compact summary")
     inspect.add_argument("attestation", type=_path)
@@ -97,6 +119,16 @@ def _verify(args: argparse.Namespace) -> int:
         dut=args.dut,
         evidence=args.evidence,
     )
+    if not issues:
+        issues.extend(
+            evaluate_policy(
+                statement,
+                required_result=args.require_result,
+                required_board=args.require_board,
+                required_target=args.require_target,
+                required_passed_tests=args.require_passed_test,
+            )
+        )
     if issues:
         print("invalid attestation:", file=sys.stderr)
         for issue in issues:
@@ -106,22 +138,49 @@ def _verify(args: argparse.Namespace) -> int:
     return 0
 
 
+def _export_predicate(args: argparse.Namespace) -> int:
+    statement = read_statement(args.attestation)
+    issues = verify_statement(statement)
+    if issues:
+        raise ValueError(
+            "cannot export predicate from invalid attestation: " + "; ".join(issues)
+        )
+    predicate = statement["predicate"]
+    write_statement(args.output, predicate, force=args.force)
+    print(f"wrote {args.output}")
+    return 0
+
+
 def _inspect(args: argparse.Namespace) -> int:
     statement = read_statement(args.attestation)
     predicate = statement.get("predicate", {})
+    if not isinstance(predicate, dict):
+        predicate = {}
+    subjects = statement.get("subject", [])
+    if not isinstance(subjects, list):
+        subjects = []
+
+    def sha256(subject: dict) -> str | None:
+        digest = subject.get("digest")
+        return digest.get("sha256") if isinstance(digest, dict) else None
+
+    def count_tests(field: str) -> int:
+        value = predicate.get(field, [])
+        return len(value) if isinstance(value, list) else 0
+
     summary = {
         "result": predicate.get("result"),
         "subjects": [
             {
                 "name": subject.get("name"),
-                "sha256": subject.get("digest", {}).get("sha256"),
+                "sha256": sha256(subject),
             }
-            for subject in statement.get("subject", [])
+            for subject in subjects
             if isinstance(subject, dict)
         ],
-        "passed": len(predicate.get("passedTests", [])),
-        "warned": len(predicate.get("warnedTests", [])),
-        "failed": len(predicate.get("failedTests", [])),
+        "passed": count_tests("passedTests"),
+        "warned": count_tests("warnedTests"),
+        "failed": count_tests("failedTests"),
         "run_url": predicate.get("url"),
     }
     print(json.dumps(summary, indent=2, sort_keys=True))
@@ -136,6 +195,8 @@ def main(argv: list[str] | None = None) -> int:
             return _create(args)
         if args.command == "verify":
             return _verify(args)
+        if args.command == "export-predicate":
+            return _export_predicate(args)
         if args.command == "inspect":
             return _inspect(args)
     except (OSError, ValueError, json.JSONDecodeError) as exc:

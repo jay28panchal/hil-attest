@@ -58,7 +58,8 @@ be added without weakening that distinction.
 
 ## Near-term roadmap
 
-1. Validate output against upstream in-toto JSON schemas.
+1. Add optional interoperability checks against upstream language bindings as
+   they stabilize; the current conformance mapping is documented and tested.
 2. Add Sigstore/cosign and GitHub Actions examples.
 3. Add adapters for Zephyr Twister and pytest-embedded metadata.
 4. Run and document physical-board pilots for nRF52 and ESP32.
