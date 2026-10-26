@@ -1,0 +1,8 @@
+{
+  "board": "nrf52840dk_nrf52840",
+  "device_id_hash": "sha256:example-only-not-a-real-device-id",
+  "runner": "pytest-embedded",
+  "target": "nRF52840",
+  "transport": "J-Link RTT"
+}
+

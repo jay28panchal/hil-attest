@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="nrf52840-smoke" tests="2" failures="0" skipped="0">
+  <testcase classname="tests.test_boot" name="test_boot_banner" time="0.42"/>
+  <testcase classname="tests.test_uart" name="test_uart_echo" time="0.18"/>
+</testsuite>
+

@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hil-attest"
+version = "0.1.0"
+description = "Create reproducible in-toto test attestations for embedded hardware-in-the-loop runs"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "Jay Panchal" }]
+keywords = ["embedded", "firmware", "hardware-in-the-loop", "in-toto", "attestation"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Testing",
+  "Topic :: Security",
+]
+dependencies = []
+
+[project.scripts]
+hil-attest = "hil_attest.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/jay28panchal/hil-attest"
+Issues = "https://github.com/jay28panchal/hil-attest/issues"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
